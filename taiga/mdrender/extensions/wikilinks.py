@@ -52,7 +52,16 @@ class WikiLinksPattern(Pattern):
 
     def handleMatch(self, m):
         label = m.group(2).strip()
-        url = resolve("wiki", self.project.slug, slugify(label))
+
+        # `project` could be other object (!)
+        slug = getattr(self.project, "slug")
+        if not slug:
+            project = getattr(self.project, "project")
+            slug = getattr(project, "slug")
+            if not slug:
+                return
+
+        url = resolve("wiki", slug, slugify(label))
 
         if m.group(3):
             title = m.group(3).strip()[1:]
@@ -76,7 +85,7 @@ class RelativeLinksTreeprocessor(Treeprocessor):
         super().__init__(md)
 
     def run(self, root):
-        links = root.getiterator("a")
+        links = root.iter("a")
         for a in links:
             href = a.get("href", "")
 

@@ -29,6 +29,7 @@ from taiga.base.utils import json
 from taiga.projects.history.mixins import HistoryResourceMixin
 from taiga.projects.milestones.models import Milestone
 from taiga.projects.mixins.by_ref import ByRefMixin
+from taiga.projects.mixins.promote import PromoteToUserStoryMixin
 from taiga.projects.models import Project, TaskStatus
 from taiga.projects.notifications.mixins import AssignedToSignalMixin
 from taiga.projects.notifications.mixins import WatchedResourceMixin
@@ -49,7 +50,7 @@ from . import utils as tasks_utils
 
 class TaskViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
                   HistoryResourceMixin, WatchedResourceMixin,  ByRefMixin,
-                  TaggedResourceMixin, BlockedByProjectMixin,
+                  TaggedResourceMixin, BlockedByProjectMixin, PromoteToUserStoryMixin,
                   ModelCrudViewSet):
     validator_class = validators.TaskValidator
     queryset = models.Task.objects.all()
@@ -226,13 +227,14 @@ class TaskViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
         assigned_to_filter_backends = (f for f in filter_backends if f != filters.AssignedToFilter)
         owners_filter_backends = (f for f in filter_backends if f != filters.OwnersFilter)
         roles_filter_backends = (f for f in filter_backends if f != filters.RoleFilter)
+        tags_filter_backends = (f for f in filter_backends if f != filters.TagsFilter)
 
         queryset = self.get_queryset()
         querysets = {
             "statuses": self.filter_queryset(queryset, filter_backends=statuses_filter_backends),
             "assigned_to": self.filter_queryset(queryset, filter_backends=assigned_to_filter_backends),
             "owners": self.filter_queryset(queryset, filter_backends=owners_filter_backends),
-            "tags": self.filter_queryset(queryset),
+            "tags": self.filter_queryset(queryset, filter_backends=tags_filter_backends),
             "roles": self.filter_queryset(queryset, filter_backends=roles_filter_backends),
         }
         return response.Ok(services.get_tasks_filters_data(project, querysets))

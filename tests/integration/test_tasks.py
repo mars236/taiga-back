@@ -32,6 +32,7 @@ from taiga.base.utils import json
 from taiga.permissions.choices import MEMBERS_PERMISSIONS, ANON_PERMISSIONS
 from taiga.projects.occ import OCCResourceMixin
 from taiga.projects.tasks import services
+from taiga.projects.userstories.models import UserStory
 
 from .. import factories as f
 
@@ -378,7 +379,6 @@ def test_api_update_order_in_bulk_invalid_tasks(client):
     response = client.json.post(url2, json.dumps(data))
     assert response.status_code == 400, response.data
     assert "bulk_tasks" in response.data
-
 
 
 def test_api_update_order_in_bulk_invalid_tasks_for_status(client):
@@ -883,6 +883,19 @@ def test_api_filters(client, filter_name, collection, expected, exclude_expected
     assert len(response.data) == exclude_expected
 
 
+def test_api_filters_tags_or_operator(client):
+    data = create_tasks_fixtures()
+    project = data["project"]
+    client.login(data["users"][0])
+    tags = data["tags"]
+
+    url = "{}?project={}&tags={},{}".format(reverse('tasks-list'), project.id, tags[0], tags[2])
+    response = client.get(url)
+
+    assert response.status_code == 200
+    assert len(response.data) == 5
+
+
 def test_api_filters_data(client):
     data = create_tasks_fixtures()
     project = data["project"]
@@ -901,7 +914,7 @@ def test_api_filters_data(client):
     assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 4
     assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 3
 
-    assert next(filter(lambda i: i['id'] == None, response.data["assigned_to"]))["count"] == 4
+    assert next(filter(lambda i: i['id'] is None, response.data["assigned_to"]))["count"] == 4
     assert next(filter(lambda i: i['id'] == user1.id, response.data["assigned_to"]))["count"] == 3
     assert next(filter(lambda i: i['id'] == user2.id, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user3.id, response.data["assigned_to"]))["count"] == 1
@@ -924,7 +937,7 @@ def test_api_filters_data(client):
     assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 3
     assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 1
 
-    assert next(filter(lambda i: i['id'] == None, response.data["assigned_to"]))["count"] == 3
+    assert next(filter(lambda i: i['id'] is None, response.data["assigned_to"]))["count"] == 3
     assert next(filter(lambda i: i['id'] == user1.id, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user2.id, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user3.id, response.data["assigned_to"]))["count"] == 0
@@ -943,11 +956,11 @@ def test_api_filters_data(client):
     response = client.get(url + "&tags={},{}&owner={},{}".format(tag1, tag2, user1.id, user2.id))
     assert response.status_code == 200
 
-    assert next(filter(lambda i: i['id'] == user1.id, response.data["owners"]))["count"] == 1
-    assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 1
-    assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 1
+    assert next(filter(lambda i: i['id'] == user1.id, response.data["owners"]))["count"] == 2
+    assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 2
+    assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 2
 
-    assert next(filter(lambda i: i['id'] == None, response.data["assigned_to"]))["count"] == 0
+    assert next(filter(lambda i: i['id'] is None, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user1.id, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user2.id, response.data["assigned_to"]))["count"] == 0
     assert next(filter(lambda i: i['id'] == user3.id, response.data["assigned_to"]))["count"] == 0
@@ -955,12 +968,12 @@ def test_api_filters_data(client):
     assert next(filter(lambda i: i['id'] == status0.id, response.data["statuses"]))["count"] == 1
     assert next(filter(lambda i: i['id'] == status1.id, response.data["statuses"]))["count"] == 0
     assert next(filter(lambda i: i['id'] == status2.id, response.data["statuses"]))["count"] == 0
-    assert next(filter(lambda i: i['id'] == status3.id, response.data["statuses"]))["count"] == 1
+    assert next(filter(lambda i: i['id'] == status3.id, response.data["statuses"]))["count"] == 3
 
-    assert next(filter(lambda i: i['name'] == tag0, response.data["tags"]))["count"] == 0
-    assert next(filter(lambda i: i['name'] == tag1, response.data["tags"]))["count"] == 2
-    assert next(filter(lambda i: i['name'] == tag2, response.data["tags"]))["count"] == 2
-    assert next(filter(lambda i: i['name'] == tag3, response.data["tags"]))["count"] == 1
+    assert next(filter(lambda i: i['name'] == tag0, response.data["tags"]))["count"] == 1
+    assert next(filter(lambda i: i['name'] == tag1, response.data["tags"]))["count"] == 3
+    assert next(filter(lambda i: i['name'] == tag2, response.data["tags"]))["count"] == 3
+    assert next(filter(lambda i: i['name'] == tag3, response.data["tags"]))["count"] == 3
 
 
 def test_api_validator_assigned_to_when_update_tasks(client):
@@ -1077,3 +1090,55 @@ def test_api_validator_assigned_to_when_create_tasks(client):
 
         response = client.json.post(url, json.dumps(data))
         assert response.status_code == 400, response.data
+
+
+def test_promote_task_to_us(client):
+    user_1 = f.UserFactory.create()
+    user_2 = f.UserFactory.create()
+    project = f.ProjectFactory.create(owner=user_1)
+    f.MembershipFactory.create(project=project, user=user_1, is_admin=True)
+    f.MembershipFactory.create(project=project, user=user_2, is_admin=False)
+    task = f.TaskFactory.create(project=project, owner=user_1, assigned_to=user_2)
+    task.add_watcher(user_1)
+    task.add_watcher(user_2)
+
+    f.TaskAttachmentFactory(project=project, content_object=task, owner=user_1)
+
+    f.HistoryEntryFactory.create(
+        project=project,
+        user={"pk": user_1.id},
+        comment="Test comment",
+        key="tasks.task:{}".format(task.id),
+        is_hidden=False,
+        diff=[]
+    )
+
+    f.HistoryEntryFactory.create(
+        project=project,
+        user={"pk": user_2.id},
+        comment="Test comment 2",
+        key="tasks.task:{}".format(task.id),
+        is_hidden=False,
+        diff=[]
+    )
+
+    client.login(user_1)
+
+    url = reverse('tasks-promote-to-user-story', kwargs={"pk": task.pk})
+    data = {"project_id": project.id}
+    promote_response = client.json.post(url, json.dumps(data))
+
+    us_ref = promote_response.data.pop()
+    us = UserStory.objects.get(ref=us_ref)
+    us_response = client.get(reverse("userstories-detail", args=[us.pk]),
+                             {"include_attachments": True})
+
+    assert promote_response.status_code == 200, promote_response.data
+    assert us_response.data["subject"] == task.subject
+    assert us_response.data["description"] == task.description
+    assert us_response.data["owner"] == task.owner_id
+    assert us_response.data["generated_from_task"] == task.id
+    assert us_response.data["assigned_users"] == {user_2.id}
+    assert us_response.data["total_watchers"] == 2
+    assert us_response.data["total_attachments"] == 1
+    assert us_response.data["total_comments"] == 2

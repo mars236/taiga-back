@@ -30,7 +30,8 @@ from django.core.urlresolvers import reverse
 
 from taiga.base.utils import json
 from taiga.permissions.choices import MEMBERS_PERMISSIONS, ANON_PERMISSIONS
-from taiga.projects.issues import services, models
+from taiga.projects.issues import services
+from taiga.projects.userstories.models import UserStory
 from taiga.projects.occ import OCCResourceMixin
 
 from .. import factories as f
@@ -482,10 +483,24 @@ def test_mulitple_exclude_filter_tags(client):
     client.login(data["users"][0])
     tags = data["tags"]
 
-    url = "{}?project={}&exclude_tags={},{}".format(reverse('issues-list'), project.id, tags[1], tags[2])
+    url = "{}?project={}&exclude_tags={},{}".format(reverse('issues-list'), project.id, tags[1],
+                                                    tags[2])
     response = client.get(url)
     assert response.status_code == 200
     assert len(response.data) == 4
+
+
+def test_api_filters_tags_or_operator(client):
+    data = create_filter_issues_context()
+    project = data["project"]
+    client.login(data["users"][0])
+    tags = data["tags"]
+
+    url = "{}?project={}&tags={},{}".format(reverse('issues-list'), project.id, tags[0], tags[2])
+    response = client.get(url)
+
+    assert response.status_code == 200
+    assert len(response.data) == 5
 
 
 def test_api_filters_data(client):
@@ -509,7 +524,7 @@ def test_api_filters_data(client):
     assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 4
     assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 3
 
-    assert next(filter(lambda i: i['id'] == None, response.data["assigned_to"]))["count"] == 4
+    assert next(filter(lambda i: i['id'] is None, response.data["assigned_to"]))["count"] == 4
     assert next(filter(lambda i: i['id'] == user1.id, response.data["assigned_to"]))["count"] == 3
     assert next(filter(lambda i: i['id'] == user2.id, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user3.id, response.data["assigned_to"]))["count"] == 1
@@ -545,7 +560,7 @@ def test_api_filters_data(client):
     assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 1
 
-    assert next(filter(lambda i: i['id'] == None, response.data["assigned_to"]))["count"] == 1
+    assert next(filter(lambda i: i['id'] is None, response.data["assigned_to"]))["count"] == 1
     assert next(filter(lambda i: i['id'] == user1.id, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user2.id, response.data["assigned_to"]))["count"] == 1
     assert next(filter(lambda i: i['id'] == user3.id, response.data["assigned_to"]))["count"] == 0
@@ -577,11 +592,11 @@ def test_api_filters_data(client):
     response = client.get(url + "&tags={},{}&owner={},{}".format(tag1, tag2, user1.id, user2.id))
     assert response.status_code == 200
 
-    assert next(filter(lambda i: i['id'] == user1.id, response.data["owners"]))["count"] == 1
-    assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 1
-    assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 1
+    assert next(filter(lambda i: i['id'] == user1.id, response.data["owners"]))["count"] == 2
+    assert next(filter(lambda i: i['id'] == user2.id, response.data["owners"]))["count"] == 2
+    assert next(filter(lambda i: i['id'] == user3.id, response.data["owners"]))["count"] == 2
 
-    assert next(filter(lambda i: i['id'] == None, response.data["assigned_to"]))["count"] == 0
+    assert next(filter(lambda i: i['id'] is None, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user1.id, response.data["assigned_to"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == user2.id, response.data["assigned_to"]))["count"] == 0
     assert next(filter(lambda i: i['id'] == user3.id, response.data["assigned_to"]))["count"] == 0
@@ -589,25 +604,25 @@ def test_api_filters_data(client):
     assert next(filter(lambda i: i['id'] == status0.id, response.data["statuses"]))["count"] == 1
     assert next(filter(lambda i: i['id'] == status1.id, response.data["statuses"]))["count"] == 0
     assert next(filter(lambda i: i['id'] == status2.id, response.data["statuses"]))["count"] == 0
-    assert next(filter(lambda i: i['id'] == status3.id, response.data["statuses"]))["count"] == 1
+    assert next(filter(lambda i: i['id'] == status3.id, response.data["statuses"]))["count"] == 3
 
-    assert next(filter(lambda i: i['id'] == type1.id, response.data["types"]))["count"] == 2
-    assert next(filter(lambda i: i['id'] == type2.id, response.data["types"]))["count"] == 0
+    assert next(filter(lambda i: i['id'] == type1.id, response.data["types"]))["count"] == 3
+    assert next(filter(lambda i: i['id'] == type2.id, response.data["types"]))["count"] == 1
 
     assert next(filter(lambda i: i['id'] == priority0.id, response.data["priorities"]))["count"] == 0
     assert next(filter(lambda i: i['id'] == priority1.id, response.data["priorities"]))["count"] == 0
-    assert next(filter(lambda i: i['id'] == priority2.id, response.data["priorities"]))["count"] == 2
+    assert next(filter(lambda i: i['id'] == priority2.id, response.data["priorities"]))["count"] == 4
     assert next(filter(lambda i: i['id'] == priority3.id, response.data["priorities"]))["count"] == 0
 
     assert next(filter(lambda i: i['id'] == severity0.id, response.data["severities"]))["count"] == 1
-    assert next(filter(lambda i: i['id'] == severity1.id, response.data["severities"]))["count"] == 0
+    assert next(filter(lambda i: i['id'] == severity1.id, response.data["severities"]))["count"] == 2
     assert next(filter(lambda i: i['id'] == severity2.id, response.data["severities"]))["count"] == 0
     assert next(filter(lambda i: i['id'] == severity3.id, response.data["severities"]))["count"] == 1
 
-    assert next(filter(lambda i: i['name'] == tag0, response.data["tags"]))["count"] == 0
-    assert next(filter(lambda i: i['name'] == tag1, response.data["tags"]))["count"] == 2
-    assert next(filter(lambda i: i['name'] == tag2, response.data["tags"]))["count"] == 2
-    assert next(filter(lambda i: i['name'] == tag3, response.data["tags"]))["count"] == 1
+    assert next(filter(lambda i: i['name'] == tag0, response.data["tags"]))["count"] == 1
+    assert next(filter(lambda i: i['name'] == tag1, response.data["tags"]))["count"] == 3
+    assert next(filter(lambda i: i['name'] == tag2, response.data["tags"]))["count"] == 3
+    assert next(filter(lambda i: i['name'] == tag3, response.data["tags"]))["count"] == 3
 
 
 def test_get_invalid_csv(client):
@@ -902,3 +917,47 @@ def test_get_issues_in_milestone(client):
     assert response.status_code == 200
     assert len(response.data) == 1
     assert response.data[0].get("milestone") == milestone.id
+
+
+def test_promote_issue_to_us(client):
+    user_1 = f.UserFactory.create()
+    user_2 = f.UserFactory.create()
+    watching_user = f.UserFactory()
+    project = f.ProjectFactory.create(owner=user_1)
+    f.MembershipFactory.create(project=project, user=user_1, is_admin=True)
+    f.MembershipFactory.create(project=project, user=user_2, is_admin=False)
+    issue = f.IssueFactory.create(project=project, owner=user_1, assigned_to=user_2)
+    issue.add_watcher(watching_user)
+
+    f.IssueAttachmentFactory(project=project, content_object=issue, owner=user_1)
+    f.IssueAttachmentFactory(project=project, content_object=issue, owner=user_1)
+
+    f.HistoryEntryFactory.create(
+        project=project,
+        user={"pk": user_1.id},
+        comment="Test comment",
+        key="issues.issue:{}".format(issue.id),
+        is_hidden=False,
+        diff=[]
+    )
+
+    client.login(user_1)
+
+    url = reverse('issues-promote-to-user-story', kwargs={"pk": issue.pk})
+    data = {"project_id": project.id}
+    promote_response = client.json.post(url, json.dumps(data))
+
+    us_ref = promote_response.data.pop()
+    us = UserStory.objects.get(ref=us_ref)
+    us_response = client.get(reverse("userstories-detail", args=[us.pk]),
+                             {"include_attachments": True})
+
+    assert promote_response.status_code == 200, promote_response.data
+    assert us_response.data["subject"] == issue.subject
+    assert us_response.data["description"] == issue.description
+    assert us_response.data["owner"] == issue.owner_id
+    assert us_response.data["generated_from_issue"] == issue.id
+    assert us_response.data["assigned_users"] == {user_2.id}
+    assert us_response.data["total_watchers"] == 1
+    assert us_response.data["total_attachments"] == 2
+    assert us_response.data["total_comments"] == 1

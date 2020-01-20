@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
-# Copyright (C) 2014-2017 Andrey Antukh <niwi@niwi.nz>
-# Copyright (C) 2014-2017 Jesús Espino <jespinog@gmail.com>
-# Copyright (C) 2014-2017 David Barragán <bameda@dbarragan.com>
-# Copyright (C) 2014-2017 Alejandro Alonso <alejandro.alonso@kaleidos.net>
+# Copyright (C) 2014-2019 Taiga Agile LLC
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
@@ -10,11 +7,11 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from django.utils.translation import ugettext as _
 from django.http import HttpResponse
@@ -22,7 +19,7 @@ from django.http import HttpResponse
 from taiga.base import filters
 from taiga.base import exceptions as exc
 from taiga.base import response
-from taiga.base.decorators import list_route
+from taiga.base.decorators import detail_route, list_route
 from taiga.base.api import ModelCrudViewSet, ModelListViewSet
 from taiga.base.api.mixins import BlockedByProjectMixin
 from taiga.base.api.utils import get_object_or_404
@@ -30,6 +27,7 @@ from taiga.base.api.utils import get_object_or_404
 from taiga.projects.history.mixins import HistoryResourceMixin
 from taiga.projects.milestones.models import Milestone
 from taiga.projects.mixins.by_ref import ByRefMixin
+from taiga.projects.mixins.promote import PromoteToUserStoryMixin
 from taiga.projects.models import Project, IssueStatus, Severity, Priority, IssueType
 from taiga.projects.notifications.mixins import AssignedToSignalMixin
 from taiga.projects.notifications.mixins import WatchedResourceMixin
@@ -49,7 +47,7 @@ from . import validators
 
 class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
                    HistoryResourceMixin, WatchedResourceMixin, ByRefMixin,
-                   TaggedResourceMixin, BlockedByProjectMixin,
+                   TaggedResourceMixin, BlockedByProjectMixin, PromoteToUserStoryMixin,
                    ModelCrudViewSet):
     validator_class = validators.IssueValidator
     queryset = models.Issue.objects.all()
@@ -200,6 +198,7 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
         priorities_filter_backends = (f for f in filter_backends if f != filters.PrioritiesFilter)
         severities_filter_backends = (f for f in filter_backends if f != filters.SeveritiesFilter)
         roles_filter_backends = (f for f in filter_backends if f != filters.RoleFilter)
+        tags_filter_backends = (f for f in filter_backends if f != filters.TagsFilter)
 
         queryset = self.get_queryset()
         querysets = {
@@ -209,7 +208,7 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
             "owners": self.filter_queryset(queryset, filter_backends=owners_filter_backends),
             "priorities": self.filter_queryset(queryset, filter_backends=priorities_filter_backends),
             "severities": self.filter_queryset(queryset, filter_backends=severities_filter_backends),
-            "tags": self.filter_queryset(queryset),
+            "tags": self.filter_queryset(queryset, filter_backends=tags_filter_backends),
             "roles": self.filter_queryset(queryset, filter_backends=roles_filter_backends),
         }
         return response.Ok(services.get_issues_filters_data(project, querysets))
@@ -268,7 +267,6 @@ class IssueViewSet(AssignedToSignalMixin, OCCResourceMixin, VotedResourceMixin,
         ret = services.update_issues_milestone_in_bulk(data["bulk_issues"], milestone)
 
         return response.Ok(ret)
-
 
 class IssueVotersViewSet(VotersViewSetMixin, ModelListViewSet):
     permission_classes = (permissions.IssueVotersPermission,)
